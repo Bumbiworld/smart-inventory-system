@@ -17,7 +17,7 @@ Hệ thống quản lý kho và lưu trữ hình ảnh vật liệu chuyên dụ
 
 ## 📂 Cấu trúc dự án
 
-\`\`\`text
+```text
 quan_ly_kho/
 ├── backend/                  # Source code Python (FastAPI)
 │   ├── app/                  # Logic xử lý API
@@ -29,7 +29,7 @@ quan_ly_kho/
 │   ├── Dockerfile            # Cấu hình build Docker cho Frontend
 │   └── docker-compose.yml    # Orchestration mở port 8080
 └── README.md
-\`\`\`
+```
 
 ## 🚀 Hướng dẫn Triển khai (Dành cho Server Xưởng)
 
@@ -47,9 +47,7 @@ Frontend được cách ly sạch sẽ trong Docker, tự động kết nối ra
 - Đảm bảo máy chủ đã cài đặt [Docker Desktop](https://www.docker.com/products/docker-desktop).
 - Mở Terminal tại thư mục `frontend/`.
 - Chạy lệnh sau:
-  \`\`\`bash
-  docker-compose up -d --build
-  \`\`\`
+  `docker-compose up -d --build`
 - Frontend sẽ được build và chạy ngầm ở cổng `8080`.
 
 ### 3. Truy cập sử dụng
