@@ -266,8 +266,8 @@ export default function UserInventoryPage() {
                     {Number.isNaN(createdAt.getTime())
                       ? folder.created_at
                       : createdAt.toLocaleDateString(
-                          'vi-VN',
-                        )}
+                        'vi-VN',
+                      )}
                   </p>
                 </div>
 

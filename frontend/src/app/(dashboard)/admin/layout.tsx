@@ -3,15 +3,17 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  ChevronLeft,
+  ChevronRight,
   Hexagon,
   LayoutDashboard,
   LogOut,
-  Menu,
   Package,
   Users,
-  X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+
+const SIDEBAR_STORAGE_KEY = 'adminSidebarCollapsed';
 
 export default function AdminLayout({
   children,
@@ -20,8 +22,9 @@ export default function AdminLayout({
 }>) {
   const pathname = usePathname();
   const router = useRouter();
+
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -37,39 +40,26 @@ export default function AdminLayout({
       return;
     }
 
+    setIsSidebarCollapsed(
+      localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true',
+    );
     setIsAuthorized(true);
   }, [router]);
 
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
 
-  useEffect(() => {
-    if (!isMobileMenuOpen) {
-      return;
-    }
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsMobileMenuOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleEscape);
-    };
-  }, [isMobileMenuOpen]);
 
   const handleLogout = () => {
     localStorage.removeItem('userRole');
     localStorage.removeItem('token');
     router.replace('/login');
+  };
+
+  const toggleDesktopSidebar = () => {
+    setIsSidebarCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      return next;
+    });
   };
 
   if (!isAuthorized) {
@@ -88,61 +78,65 @@ export default function AdminLayout({
   const isUsersPage = pathname.startsWith('/admin/users');
   const isInventoryPage = pathname.startsWith('/admin/inventory');
 
-  const pageTitle = pathname === '/admin'
-    ? 'Tổng quan'
-    : isUsersPage
-      ? 'Nhân sự'
+  const pageTitle =
+    pathname === '/admin'
+      ? 'Bảng điều khiển'
       : isInventoryPage
         ? 'Kho hàng'
-        : 'Quản trị';
+        : isUsersPage
+          ? 'Nhân sự'
+          : 'Quản trị';
 
   const navItems = [
     {
       href: '/admin',
-      label: 'Tổng quan',
-      desktopLabel: 'Bảng điều khiển',
+      label: 'Bảng điều khiển',
+      mobileLabel: 'Tổng quan',
       icon: LayoutDashboard,
       active: pathname === '/admin',
     },
     {
       href: '/admin/inventory',
-      label: 'Kho hàng',
-      desktopLabel: 'Quản lý Lô hàng',
+      label: 'Quản lý Lô hàng',
+      mobileLabel: 'Kho hàng',
       icon: Package,
       active: isInventoryPage,
     },
     {
       href: '/admin/users',
-      label: 'Nhân sự',
-      desktopLabel: 'Quản lý Nhân sự',
+      label: 'Quản lý Nhân sự',
+      mobileLabel: 'Nhân sự',
       icon: Users,
       active: isUsersPage,
     },
   ];
 
-  const sidebarContent = (
+  const renderSidebarContent = (
+    collapsed: boolean,
+  ) => (
     <>
-      <div className="flex h-20 items-center justify-between px-5">
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 p-2 shadow-lg shadow-blue-500/20">
+      <div
+        className={`flex h-20 shrink-0 items-center border-b border-slate-800/70 ${collapsed ? 'justify-center px-3' : 'justify-between px-5'
+          }`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="shrink-0 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 p-2 shadow-lg shadow-blue-500/20">
             <Hexagon className="h-6 w-6 fill-white/20 text-white" />
           </div>
-          <h1 className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-xl font-extrabold tracking-tight text-transparent">
-            KHO HÀNG
-          </h1>
+
+          {!collapsed && (
+            <h1 className="truncate bg-gradient-to-r from-white to-slate-400 bg-clip-text text-xl font-extrabold tracking-tight text-transparent">
+              KHO HÀNG
+            </h1>
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-800 hover:text-white lg:hidden"
-          aria-label="Đóng menu"
-        >
-          <X className="h-5 w-5" />
-        </button>
       </div>
 
-      <nav className="flex-1 space-y-2 overflow-y-auto px-4 py-5">
+      <nav
+        className={`flex-1 space-y-2 overflow-y-auto py-5 ${collapsed ? 'px-2' : 'px-4'
+          }`}
+      >
         {navItems.map((item) => {
           const Icon = item.icon;
 
@@ -150,26 +144,37 @@ export default function AdminLayout({
             <Link
               key={item.href}
               href={item.href}
-              className={`group flex min-h-12 items-center rounded-xl px-4 py-3 transition ${item.active
+              title={collapsed ? item.label : undefined}
+              className={`group flex min-h-12 items-center rounded-xl py-3 transition ${collapsed ? 'justify-center px-2' : 'px-4'
+                } ${item.active
                   ? 'bg-blue-600/15 text-blue-300 ring-1 ring-blue-500/20'
                   : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100'
                 }`}
             >
-              <Icon className="mr-3 h-5 w-5 shrink-0" />
-              <span className="font-medium">{item.desktopLabel}</span>
+              <Icon
+                className={`h-5 w-5 shrink-0 ${collapsed ? '' : 'mr-3'}`}
+              />
+              {!collapsed && (
+                <span className="truncate font-medium">{item.label}</span>
+              )}
             </Link>
           );
         })}
       </nav>
 
-      <div className="border-t border-slate-800 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:pb-4">
+      <div
+        className={`border-t border-slate-800 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:pb-3 ${collapsed ? 'px-2' : 'px-4'
+          }`}
+      >
         <button
           type="button"
           onClick={handleLogout}
-          className="flex min-h-12 w-full items-center rounded-xl px-4 py-3 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-400"
+          title={collapsed ? 'Đăng xuất' : undefined}
+          className={`flex min-h-12 w-full items-center rounded-xl py-3 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-400 ${collapsed ? 'justify-center px-2' : 'px-4'
+            }`}
         >
-          <LogOut className="mr-3 h-5 w-5" />
-          <span className="font-medium">Đăng xuất</span>
+          <LogOut className={`h-5 w-5 ${collapsed ? '' : 'mr-3'}`} />
+          {!collapsed && <span className="font-medium">Đăng xuất</span>}
         </button>
       </div>
     </>
@@ -177,34 +182,32 @@ export default function AdminLayout({
 
   return (
     <div className="min-h-dvh bg-slate-50 font-sans text-slate-900 lg:flex lg:h-screen lg:overflow-hidden">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-800/50 bg-[#0B1120] lg:flex">
-        {sidebarContent}
+      <aside
+        className={`relative hidden shrink-0 flex-col border-r border-slate-800/50 bg-[#0B1120] transition-[width] duration-300 lg:flex ${isSidebarCollapsed ? 'w-[76px]' : 'w-64'
+          }`}
+      >
+        {renderSidebarContent(isSidebarCollapsed)}
+
+        <button
+          type="button"
+          onClick={toggleDesktopSidebar}
+          className="absolute -right-3 top-24 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-md transition hover:text-blue-600"
+          aria-label={
+            isSidebarCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'
+          }
+          title={
+            isSidebarCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'
+          }
+        >
+          {isSidebarCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+        </button>
       </aside>
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col lg:h-screen lg:min-h-0">
-        <header className="sticky top-0 z-40 flex min-h-16 items-center justify-between border-b border-slate-200/80 bg-white/95 px-3 backdrop-blur sm:px-5 lg:hidden">
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm"
-            aria-label="Mở menu quản trị"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-
-          <div className="min-w-0 px-3 text-center">
-            <p className="truncate text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-              KHO HÀNG
-            </p>
-            <h2 className="truncate text-sm font-bold text-slate-800">
-              {pageTitle}
-            </h2>
-          </div>
-
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white font-bold text-blue-600 shadow-sm">
-            A
-          </div>
-        </header>
 
         <header className="hidden h-20 shrink-0 items-center justify-between bg-slate-50 px-8 lg:flex">
           <h2 className="text-lg font-bold text-slate-800">{pageTitle}</h2>
@@ -214,25 +217,11 @@ export default function AdminLayout({
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-3 pb-28 pt-4 sm:px-5 sm:pt-5 lg:overflow-y-auto lg:px-8 lg:pb-8 lg:pt-0">
+        <main className="min-w-0 flex-1 px-3 pb-28 pt-3 sm:px-5 sm:pt-5 lg:overflow-y-auto lg:px-8 lg:pb-8 lg:pt-0">
           {children}
         </main>
       </div>
 
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]"
-            onClick={() => setIsMobileMenuOpen(false)}
-            aria-label="Đóng menu"
-          />
-
-          <aside className="relative flex h-full w-[min(20rem,calc(100vw-3rem))] flex-col bg-[#0B1120] shadow-2xl animate-in slide-in-from-left duration-200">
-            {sidebarContent}
-          </aside>
-        </div>
-      )}
 
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-slate-200 bg-white/95 px-2 pt-1 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden pb-[calc(0.35rem+env(safe-area-inset-bottom))]">
         {navItems.map((item) => {
@@ -243,12 +232,14 @@ export default function AdminLayout({
               key={item.href}
               href={item.href}
               className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl px-2 text-xs font-semibold transition ${item.active
-                  ? 'text-blue-600'
-                  : 'text-slate-500 active:bg-slate-100'
+                ? 'text-blue-600'
+                : 'text-slate-500 active:bg-slate-100'
                 }`}
             >
-              <Icon className={`h-5 w-5 ${item.active ? 'stroke-[2.5]' : ''}`} />
-              <span>{item.label}</span>
+              <Icon
+                className={`h-5 w-5 ${item.active ? 'stroke-[2.5]' : ''}`}
+              />
+              <span>{item.mobileLabel}</span>
             </Link>
           );
         })}

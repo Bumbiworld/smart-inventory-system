@@ -10,4 +10,6 @@ call env\Scripts\activate
 
 pip install -r requirements.txt >nul 2>&1
 
+python init_db.py
+
 uvicorn app.main:app --host 0.0.0.0 --port 8000

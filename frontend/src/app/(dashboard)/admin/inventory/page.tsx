@@ -63,6 +63,12 @@ export default function ImageFoldersPage() {
   } | null>(null);
   const [editFolderName, setEditFolderName] = useState('');
 
+  // --- STATE QUẢN LÝ MODAL XÓA BẰNG MẬT KHẨU ---
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, id: number | null, name: string }>({ isOpen: false, id: null, name: '' });
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const fetchFolders = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage('');
@@ -226,26 +232,31 @@ export default function ImageFoldersPage() {
     }
   };
 
-  const handleDeleteFolder = async (
+  const openEditModal = (
     event: React.MouseEvent<HTMLButtonElement>,
-    folderId: number,
-    folderName: string,
+    folder: FolderView,
   ) => {
     event.stopPropagation();
+    setEditingFolder({ id: folder.id, name: folder.name });
+    setEditFolderName(folder.name);
+    setIsEditModalOpen(true);
+  };
 
-    const confirmed = window.confirm(
-      `Bạn có chắc chắn muốn xóa thư mục "${folderName}"? Toàn bộ ảnh bên trong sẽ bị mất.`,
-    );
-
-    if (!confirmed) {
+  // --- HÀM XỬ LÝ XÓA KHI NHẬP ĐÚNG MẬT KHẨU ---
+  const handleConfirmDelete = async () => {
+    if (deletePassword !== '123456') {
+      setDeleteError('Mã xác minh không chính xác!');
       return;
     }
 
-    setErrorMessage('');
+    if (!deleteModal.id) return;
+
+    setIsDeleting(true);
+    setDeleteError('');
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/admin/folders/${folderId}`,
+        `${API_BASE_URL}/api/admin/folders/${deleteModal.id}`,
         {
           method: 'DELETE',
           headers: {
@@ -258,24 +269,19 @@ export default function ImageFoldersPage() {
         throw new Error(await readApiError(response));
       }
 
+      // Đóng modal và reset state sau khi xóa thành công
+      setDeleteModal({ isOpen: false, id: null, name: '' });
+      setDeletePassword('');
       await fetchFolders();
     } catch (error) {
-      setErrorMessage(
+      setDeleteError(
         error instanceof Error
           ? error.message
           : 'Không thể xóa lô hàng.',
       );
+    } finally {
+      setIsDeleting(false);
     }
-  };
-
-  const openEditModal = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    folder: FolderView,
-  ) => {
-    event.stopPropagation();
-    setEditingFolder({ id: folder.id, name: folder.name });
-    setEditFolderName(folder.name);
-    setIsEditModalOpen(true);
   };
 
   return (
@@ -339,8 +345,8 @@ export default function ImageFoldersPage() {
               <div className="mb-4 flex items-center gap-3 sm:mb-6 sm:gap-4">
                 <div
                   className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold sm:px-4 sm:text-sm ${group.isToday
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-slate-200 text-slate-600'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-slate-200 text-slate-600'
                     }`}
                 >
                   {group.date}
@@ -413,15 +419,15 @@ export default function ImageFoldersPage() {
                               <span className="sm:hidden">Đổi tên</span>
                             </button>
 
+                            {/* NÚT XÓA ĐÃ ĐƯỢC ĐỔI ĐỂ MỞ MODAL */}
                             <button
                               type="button"
-                              onClick={(event) =>
-                                void handleDeleteFolder(
-                                  event,
-                                  folder.id,
-                                  folder.name,
-                                )
-                              }
+                              onClick={(event) => {
+                                event.stopPropagation(); // Chặn sự kiện click nhảy trang
+                                setDeleteModal({ isOpen: true, id: folder.id, name: folder.name });
+                                setDeletePassword('');
+                                setDeleteError('');
+                              }}
                               className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-rose-600 transition hover:border-rose-200 hover:bg-rose-50"
                               aria-label={`Xóa ${folder.name}`}
                             >
@@ -440,6 +446,7 @@ export default function ImageFoldersPage() {
         </div>
       )}
 
+      {/* Modal Tạo mới và Đổi tên giữ nguyên... */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 sm:max-w-md sm:rounded-3xl sm:p-8 sm:zoom-in-95">
@@ -557,6 +564,75 @@ export default function ImageFoldersPage() {
           </div>
         </div>
       )}
+
+      {/* --- GIAO DIỆN MODAL XÓA BẰNG MẬT KHẨU --- */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200 border border-slate-100">
+
+            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+              <Trash2 className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-xl font-bold text-center text-slate-800 mb-2">Cảnh báo xóa dữ liệu!</h3>
+            <p className="text-center text-slate-500 text-sm mb-6 leading-relaxed">
+              Bạn đang thực hiện xóa lô hàng <span className="font-bold text-rose-600">"{deleteModal.name}"</span>. Hành động này sẽ xóa toàn bộ ảnh bên trong và <strong>không thể hoàn tác</strong>.
+            </p>
+
+            <div className="space-y-3 mb-6">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block text-center">
+                Nhập mã xác minh (123456) để tiếp tục:
+              </label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => {
+                  setDeletePassword(e.target.value);
+                  setDeleteError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleConfirmDelete()}
+                className={`w-full px-4 py-3 rounded-xl border-2 outline-none transition-all font-mono text-center tracking-widest text-lg ${deleteError ? 'border-rose-300 bg-rose-50 text-rose-700 focus:border-rose-500' : 'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white'
+                  }`}
+                placeholder="••••••"
+                autoFocus
+                disabled={isDeleting}
+              />
+              {deleteError && (
+                <p className="text-sm font-bold text-rose-500 text-center animate-in slide-in-from-top-1">{deleteError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteModal({ isOpen: false, id: null, name: '' });
+                  setDeletePassword('');
+                  setDeleteError('');
+                }}
+                disabled={isDeleting}
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting || !deletePassword}
+                className="flex flex-1 items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-500/20 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Đang xóa...</>
+                ) : (
+                  'Xác nhận Xóa'
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

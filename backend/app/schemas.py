@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr 
+from pydantic import BaseModel, EmailStr, Field 
 from datetime import datetime 
-from typing import Optional 
+from typing import Optional, List 
 
 class LoginRequest(BaseModel):
     email: str
@@ -32,6 +32,23 @@ class FolderResponse(BaseModel):
 class FolderUpdate(BaseModel):
     name: str 
 
+class TagBase(BaseModel):
+    name: str
+    color_code: Optional[str] = "#3B82F6"  # Màu hiển thị (mặc định là xanh dương)
+
+class TagCreate(TagBase):
+    pass
+
+class TagResponse(TagBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+class ImageTagsUpdate(BaseModel):
+    tag_ids: List[int]
+
+
 class ImageResponse(BaseModel):
     id: int
     folder_id: int 
@@ -41,7 +58,7 @@ class ImageResponse(BaseModel):
     original_time: datetime
     status: str
     completed_time: Optional[datetime] = None
+    tags: List[TagResponse] = Field(default_factory=list)
 
     class Config:
-        from_attributes = True 
-        
+        from_attributes = True
