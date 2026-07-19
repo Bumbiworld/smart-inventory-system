@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -107,8 +107,6 @@ def _resolve_storage_path(relative_path: str) -> Path:
             detail="Thiếu đường dẫn file hoặc thư mục.",
         )
 
-    # URL lưu trong database có thể chứa ký tự đã encode,
-    # ví dụ "1_%C4%91en" phải được giải mã thành "1_đen".
     decoded_path = unquote(str(relative_path)).lstrip("/\\")
     candidate = (UPLOAD_DIR / decoded_path).resolve()
 
@@ -415,6 +413,10 @@ def update_folder(
             old_prefix = old_directory.name
             new_prefix = new_directory.name
 
+            # BẢN VÁ: Mã hóa URL trước khi thay thế để tránh lỗi gãy đường dẫn ảnh
+            encoded_old_prefix = quote(old_prefix, safe="")
+            encoded_new_prefix = quote(new_prefix, safe="")
+
             images = (
                 db.query(models.ImageRecord)
                 .filter(models.ImageRecord.folder_id == folder_id)
@@ -422,14 +424,22 @@ def update_folder(
             )
             for image in images:
                 image.file_path = image.file_path.replace(
-                    f"/uploads/{old_prefix}/",
-                    f"/uploads/{new_prefix}/",
+                    f"/uploads/{encoded_old_prefix}/",
+                    f"/uploads/{encoded_new_prefix}/",
                     1,
                 )
 
         db.commit()
         db.refresh(folder)
         return folder
+    except PermissionError as exc:
+        # Bắt riêng lỗi WinError 5 trên Windows
+        db.rollback()
+        folder.name = old_name
+        raise HTTPException(
+            status_code=403,
+            detail="Thư mục đang bị mở trên máy tính (File Explorer, Xem ảnh...). Hãy đóng cửa sổ thư mục và thử lại.",
+        ) from exc
     except Exception as exc:
         db.rollback()
         folder.name = old_name

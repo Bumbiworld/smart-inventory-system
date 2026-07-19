@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
@@ -217,13 +217,39 @@ def delete_tag(
 # ==========================================
 
 
-@router.get("/folders", response_model=list[schemas.FolderResponse])
+@router.get("/folders") 
 def get_folders(db: Session = Depends(get_db)):
-    return (
+    folders = (
         db.query(models.Folder)
         .order_by(models.Folder.created_at.desc())
         .all()
     )
+    
+    result = []
+    for folder in folders:
+       
+        in_progress_count = (
+            db.query(models.ImageRecord)
+            .filter(
+                models.ImageRecord.folder_id == folder.id,
+                models.ImageRecord.status == "in_progress"
+            )
+            .count()
+        )
+        
+        
+        result.append({
+            "id": folder.id,
+            "name": folder.name,
+            "uploader_email": folder.uploader_email,
+            "created_at": folder.created_at,
+            "image_count": folder.image_count,
+            "size_mb": folder.size_mb,
+            "status": getattr(folder, "status", None),
+            "in_progress_count": in_progress_count 
+        })
+        
+    return result
 
 
 @router.post("/folders", response_model=schemas.FolderResponse)
@@ -612,7 +638,7 @@ def complete_image_work(
         )
 
     image.status = "completed"
-    image.completed_time = datetime.now()
+    image.completed_time = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(image)

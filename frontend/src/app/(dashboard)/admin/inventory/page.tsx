@@ -11,6 +11,7 @@ import {
   UploadCloud,
   User,
   X,
+  Scissors
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -29,6 +30,7 @@ interface Folder {
   image_count: number;
   size_mb: number;
   status: string;
+  in_progress_count?: number; // Đón dữ liệu từ backend
 }
 
 interface FolderView {
@@ -38,6 +40,7 @@ interface FolderView {
   time: string;
   imageCount: number;
   size: string;
+  inProgressCount: number;
 }
 
 interface FolderGroup {
@@ -63,7 +66,6 @@ export default function ImageFoldersPage() {
   } | null>(null);
   const [editFolderName, setEditFolderName] = useState('');
 
-  // --- STATE QUẢN LÝ MODAL XÓA BẰNG MẬT KHẨU ---
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, id: number | null, name: string }>({ isOpen: false, id: null, name: '' });
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -124,6 +126,7 @@ export default function ImageFoldersPage() {
           time: timeStr,
           imageCount: folder.image_count,
           size: `${folder.size_mb} MB`,
+          inProgressCount: folder.in_progress_count || 0, // Nhận số lượng chờ cắt
         });
       });
 
@@ -149,9 +152,7 @@ export default function ImageFoldersPage() {
     event.preventDefault();
     const name = newFolderName.trim();
 
-    if (!name) {
-      return;
-    }
+    if (!name) return;
 
     setIsSubmitting(true);
     setErrorMessage('');
@@ -169,9 +170,7 @@ export default function ImageFoldersPage() {
         },
       );
 
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
+      if (!response.ok) throw new Error(await readApiError(response));
 
       setNewFolderName('');
       setIsModalOpen(false);
@@ -193,9 +192,7 @@ export default function ImageFoldersPage() {
     event.preventDefault();
     const name = editFolderName.trim();
 
-    if (!editingFolder || !name) {
-      return;
-    }
+    if (!editingFolder || !name) return;
 
     setIsSubmitting(true);
     setErrorMessage('');
@@ -213,9 +210,7 @@ export default function ImageFoldersPage() {
         },
       );
 
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
+      if (!response.ok) throw new Error(await readApiError(response));
 
       setIsEditModalOpen(false);
       setEditingFolder(null);
@@ -242,7 +237,6 @@ export default function ImageFoldersPage() {
     setIsEditModalOpen(true);
   };
 
-  // --- HÀM XỬ LÝ XÓA KHI NHẬP ĐÚNG MẬT KHẨU ---
   const handleConfirmDelete = async () => {
     if (deletePassword !== '123456') {
       setDeleteError('Mã xác minh không chính xác!');
@@ -265,11 +259,8 @@ export default function ImageFoldersPage() {
         },
       );
 
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
+      if (!response.ok) throw new Error(await readApiError(response));
 
-      // Đóng modal và reset state sau khi xóa thành công
       setDeleteModal({ isOpen: false, id: null, name: '' });
       setDeletePassword('');
       await fetchFolders();
@@ -285,7 +276,7 @@ export default function ImageFoldersPage() {
   };
 
   return (
-    <div className="relative mx-auto max-w-5xl animate-in space-y-6 pb-10 fade-in slide-in-from-bottom-4 duration-500 sm:space-y-8">
+    <div className="relative mx-auto max-w-7xl animate-in space-y-6 pb-10 fade-in slide-in-from-bottom-4 duration-500 sm:space-y-8">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-1 text-sm font-bold text-blue-600">Kho hàng</p>
@@ -354,7 +345,8 @@ export default function ImageFoldersPage() {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
 
-              <div className="space-y-3 sm:ml-4 sm:border-l-2 sm:border-dashed sm:border-slate-200 sm:pl-6">
+              {/* LƯỚI 3 CỘT ĐƯỢC CHIA TẠI ĐÂY */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 sm:ml-4 sm:border-l-2 sm:border-dashed sm:border-slate-200 sm:pl-6">
                 {group.folders.map((folder) => (
                   <article
                     key={folder.id}
@@ -369,73 +361,79 @@ export default function ImageFoldersPage() {
                         router.push(`/admin/inventory/${folder.id}`);
                       }
                     }}
-                    className="group relative cursor-pointer rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-100 sm:p-5"
+                    className="group flex flex-col justify-between relative cursor-pointer rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-100"
                   >
-                    <div className="flex items-start gap-3 sm:gap-5">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-inner transition group-hover:bg-blue-500 group-hover:text-white sm:h-16 sm:w-16">
-                        <FolderOpen className="h-7 w-7 sm:h-8 sm:w-8" />
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-inner transition group-hover:bg-blue-600 group-hover:text-white">
+                        <FolderOpen className="h-7 w-7" />
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h2 className="truncate text-base font-bold text-slate-800 sm:text-lg">
-                              {folder.name}
-                            </h2>
-                            <div className="mt-2 flex flex-col gap-1.5 text-xs text-slate-500 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 sm:text-sm">
-                              <span className="flex min-w-0 items-center gap-1.5">
-                                <User className="h-4 w-4 shrink-0 text-slate-400" />
-                                <span className="truncate">{folder.uploader}</span>
-                              </span>
-                              <span className="flex items-center gap-1.5">
-                                <Clock className="h-4 w-4 text-slate-400" />
-                                {folder.time}
-                              </span>
-                            </div>
-                          </div>
-
-                          <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500" />
+                        <div className="flex items-start justify-between gap-2">
+                          <h2 className="truncate text-base font-bold text-slate-800 sm:text-lg" title={folder.name}>
+                            {folder.name}
+                          </h2>
+                          <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-blue-500" />
                         </div>
 
-                        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="flex items-center gap-2 text-sm font-bold text-slate-700 sm:text-base">
-                              <ImageIcon className="h-4 w-4 text-blue-500 sm:h-5 sm:w-5" />
-                              {folder.imageCount} ảnh
-                            </p>
-                            <p className="mt-0.5 text-xs font-medium text-slate-400">
-                              Tổng dung lượng: {folder.size}
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 sm:flex">
-                            <button
-                              type="button"
-                              onClick={(event) => openEditModal(event, folder)}
-                              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                              aria-label={`Đổi tên ${folder.name}`}
-                            >
-                              <Edit className="h-4 w-4" />
-                              <span className="sm:hidden">Đổi tên</span>
-                            </button>
-
-                            {/* NÚT XÓA ĐÃ ĐƯỢC ĐỔI ĐỂ MỞ MODAL */}
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation(); // Chặn sự kiện click nhảy trang
-                                setDeleteModal({ isOpen: true, id: folder.id, name: folder.name });
-                                setDeletePassword('');
-                                setDeleteError('');
-                              }}
-                              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-rose-600 transition hover:border-rose-200 hover:bg-rose-50"
-                              aria-label={`Xóa ${folder.name}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              <span className="sm:hidden">Xóa</span>
-                            </button>
-                          </div>
+                        <div className="mt-2 flex flex-col gap-1.5 text-xs text-slate-500">
+                          <span className="flex items-center gap-1.5 truncate" title={folder.uploader}>
+                            <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <span className="truncate">{folder.uploader}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            {folder.time}
+                          </span>
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto border-t border-slate-100 pt-4 flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
+                            <ImageIcon className="h-4 w-4 text-blue-500" />
+                            {folder.imageCount} ảnh
+                          </p>
+                          <p className="mt-0.5 text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                            Dung lượng: {folder.size}
+                          </p>
+                        </div>
+
+                        {/* HUY HIỆU ĐANG CHỜ CẮT */}
+                        {folder.inProgressCount > 0 && (
+                          <div
+                            className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 shadow-sm"
+                            title={`${folder.inProgressCount} tấm vật liệu đang chờ được cắt`}
+                          >
+                            <Scissors className="h-4 w-4" />
+                            <span className="text-xs font-bold">{folder.inProgressCount}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={(event) => openEditModal(event, folder)}
+                          className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                          <Edit className="h-4 w-4" /> Đổi tên
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteModal({ isOpen: true, id: folder.id, name: folder.name });
+                            setDeletePassword('');
+                            setDeleteError('');
+                          }}
+                          className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-4 w-4" /> Xóa
+                        </button>
                       </div>
                     </div>
                   </article>
@@ -446,60 +444,25 @@ export default function ImageFoldersPage() {
         </div>
       )}
 
-      {/* Modal Tạo mới và Đổi tên giữ nguyên... */}
+      {/* MODAL TẠO MỚI */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/60 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 sm:max-w-md sm:rounded-3xl sm:p-8 sm:zoom-in-95">
             <div className="mb-6 flex items-center justify-between gap-4">
-              <h2 className="text-xl font-bold text-slate-800">
-                Tạo thư mục lô hàng mới
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"
-                aria-label="Đóng"
-              >
+              <h2 className="text-xl font-bold text-slate-800">Tạo thư mục lô hàng mới</h2>
+              <button onClick={() => setIsModalOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
                 <X className="h-5 w-5" />
               </button>
             </div>
-
             <form onSubmit={handleCreateFolder}>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">
-                  Tên lô hàng / Thư mục{' '}
-                  <span className="text-rose-500">*</span>
-                </span>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  placeholder="VD: Nhập tên vật liệu..."
-                  className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-                  value={newFolderName}
-                  onChange={(event) => setNewFolderName(event.target.value)}
-                  disabled={isSubmitting}
-                />
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Tên lô hàng / Thư mục <span className="text-rose-500">*</span></span>
+                <input type="text" required autoFocus placeholder="VD: Nhập tên vật liệu..." className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} disabled={isSubmitting} />
               </label>
-
               <div className="mt-6 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !newFolderName.trim()}
-                  className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSubmitting && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Xác nhận tạo
+                <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100">Hủy bỏ</button>
+                <button type="submit" disabled={isSubmitting || !newFolderName.trim()} className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Xác nhận tạo
                 </button>
               </div>
             </form>
@@ -507,57 +470,25 @@ export default function ImageFoldersPage() {
         </div>
       )}
 
+      {/* MODAL ĐỔI TÊN */}
       {isEditModalOpen && editingFolder && (
-        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
+        <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/60 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 sm:max-w-md sm:rounded-3xl sm:p-8 sm:zoom-in-95">
             <div className="mb-6 flex items-center justify-between gap-4">
-              <h2 className="text-xl font-bold text-slate-800">
-                Đổi tên thư mục
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"
-                aria-label="Đóng"
-              >
+              <h2 className="text-xl font-bold text-slate-800">Đổi tên thư mục</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
                 <X className="h-5 w-5" />
               </button>
             </div>
-
             <form onSubmit={handleUpdateFolder}>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">
-                  Tên mới
-                </span>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-                  value={editFolderName}
-                  onChange={(event) => setEditFolderName(event.target.value)}
-                  disabled={isSubmitting}
-                />
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Tên mới</span>
+                <input type="text" required autoFocus className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={editFolderName} onChange={(e) => setEditFolderName(e.target.value)} disabled={isSubmitting} />
               </label>
-
               <div className="mt-6 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !editFolderName.trim()}
-                  className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSubmitting && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Lưu thay đổi
+                <button type="button" onClick={() => setIsEditModalOpen(false)} disabled={isSubmitting} className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100">Hủy bỏ</button>
+                <button type="submit" disabled={isSubmitting || !editFolderName.trim()} className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Lưu thay đổi
                 </button>
               </div>
             </form>
@@ -565,74 +496,31 @@ export default function ImageFoldersPage() {
         </div>
       )}
 
-      {/* --- GIAO DIỆN MODAL XÓA BẰNG MẬT KHẨU --- */}
+      {/* MODAL XÓA BẰNG MẬT KHẨU */}
       {deleteModal.isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200 border border-slate-100">
-
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
               <Trash2 className="w-8 h-8" />
             </div>
-
             <h3 className="text-xl font-bold text-center text-slate-800 mb-2">Cảnh báo xóa dữ liệu!</h3>
-            <p className="text-center text-slate-500 text-sm mb-6 leading-relaxed">
-              Bạn đang thực hiện xóa lô hàng <span className="font-bold text-rose-600">"{deleteModal.name}"</span>. Hành động này sẽ xóa toàn bộ ảnh bên trong và <strong>không thể hoàn tác</strong>.
+            <p className="text-center text-slate-500 text-sm mb-6">
+              Xóa lô hàng <span className="font-bold text-rose-600">"{deleteModal.name}"</span> sẽ xóa toàn bộ ảnh bên trong và <strong>không thể hoàn tác</strong>.
             </p>
-
             <div className="space-y-3 mb-6">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block text-center">
-                Nhập mã xác minh (123456) để tiếp tục:
-              </label>
-              <input
-                type="password"
-                value={deletePassword}
-                onChange={(e) => {
-                  setDeletePassword(e.target.value);
-                  setDeleteError('');
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && handleConfirmDelete()}
-                className={`w-full px-4 py-3 rounded-xl border-2 outline-none transition-all font-mono text-center tracking-widest text-lg ${deleteError ? 'border-rose-300 bg-rose-50 text-rose-700 focus:border-rose-500' : 'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white'
-                  }`}
-                placeholder="••••••"
-                autoFocus
-                disabled={isDeleting}
-              />
-              {deleteError && (
-                <p className="text-sm font-bold text-rose-500 text-center animate-in slide-in-from-top-1">{deleteError}</p>
-              )}
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block text-center">Nhập mã xác minh (123456):</label>
+              <input type="password" value={deletePassword} onChange={(e) => { setDeletePassword(e.target.value); setDeleteError(''); }} onKeyDown={(e) => e.key === 'Enter' && handleConfirmDelete()} className={`w-full px-4 py-3 rounded-xl border-2 outline-none transition-all font-mono text-center tracking-widest text-lg ${deleteError ? 'border-rose-300 bg-rose-50 text-rose-700 focus:border-rose-500' : 'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white'}`} placeholder="••••••" autoFocus disabled={isDeleting} />
+              {deleteError && <p className="text-sm font-bold text-rose-500 text-center">{deleteError}</p>}
             </div>
-
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteModal({ isOpen: false, id: null, name: '' });
-                  setDeletePassword('');
-                  setDeleteError('');
-                }}
-                disabled={isDeleting}
-                className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={isDeleting || !deletePassword}
-                className="flex flex-1 items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-500/20 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {isDeleting ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Đang xóa...</>
-                ) : (
-                  'Xác nhận Xóa'
-                )}
+              <button type="button" onClick={() => { setDeleteModal({ isOpen: false, id: null, name: '' }); setDeletePassword(''); setDeleteError(''); }} disabled={isDeleting} className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50">Hủy bỏ</button>
+              <button type="button" onClick={handleConfirmDelete} disabled={isDeleting || !deletePassword} className="flex flex-1 items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-700 transition-all disabled:opacity-70">
+                {isDeleting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Xác nhận Xóa'}
               </button>
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 }

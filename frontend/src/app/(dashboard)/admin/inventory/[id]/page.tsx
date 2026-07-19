@@ -99,6 +99,23 @@ export default function FolderDetailPage() {
     };
   }, []);
 
+  // ĐOẠN MÃ MỚI: Lắng nghe phím ESC để đóng Modal xem ảnh
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPreviewModal({ isOpen: false, img: null });
+      }
+    };
+
+    if (previewModal.isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewModal.isOpen]);
+
   const getValidImageUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
@@ -218,7 +235,6 @@ export default function FolderDetailPage() {
 
   const imageMatchesTagFilter = useCallback(
     (image: ImageRecord) => {
-      // "Không gắn nhãn" được xem là vật liệu bình thường.
       if (showUntaggedOnly) {
         return !image.tags?.length;
       }
@@ -231,7 +247,6 @@ export default function FolderDetailPage() {
         (image.tags || []).map((tag) => tag.id),
       );
 
-      // Một ảnh phải có đủ tất cả nhãn đang chọn.
       return selectedTagIds.every((tagId) =>
         imageTagIds.has(tagId),
       );
@@ -858,8 +873,8 @@ export default function FolderDetailPage() {
           type="button"
           onClick={() => setIsFilterOpen((value) => !value)}
           className={`flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition ${selectedTagIds.length > 0 || showUntaggedOnly
-              ? 'border-blue-200 bg-blue-50 text-blue-700'
-              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            ? 'border-blue-200 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
         >
           <SlidersHorizontal className="h-4 w-4" />
@@ -950,8 +965,8 @@ export default function FolderDetailPage() {
               type="button"
               onClick={toggleUntaggedFilter}
               className={`mt-3 flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-bold transition ${showUntaggedOnly
-                  ? 'bg-slate-100 text-slate-800'
-                  : 'text-slate-700 hover:bg-slate-50'
+                ? 'bg-slate-100 text-slate-800'
+                : 'text-slate-700 hover:bg-slate-50'
                 }`}
             >
               <span className="flex items-center gap-2">
@@ -978,8 +993,8 @@ export default function FolderDetailPage() {
                       type="button"
                       onClick={() => toggleFilterTag(tag.id)}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-bold transition ${selected
-                          ? 'bg-slate-100'
-                          : 'hover:bg-slate-50'
+                        ? 'bg-slate-100'
+                        : 'hover:bg-slate-50'
                         }`}
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -1072,8 +1087,8 @@ export default function FolderDetailPage() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   className={`flex min-h-14 flex-1 items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 text-center transition-all duration-300 ${isUploading
-                      ? 'cursor-not-allowed border-slate-200 bg-slate-50'
-                      : 'cursor-pointer border-blue-300 bg-blue-50/50 hover:bg-blue-100/50'
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-50'
+                    : 'cursor-pointer border-blue-300 bg-blue-50/50 hover:bg-blue-100/50'
                     }`}
                 >
                   <ImagePlus className={`h-5 w-5 ${isDragging ? 'animate-bounce text-blue-700' : 'text-blue-500'}`} />
@@ -1476,8 +1491,8 @@ export default function FolderDetailPage() {
                   type="button"
                   onClick={() => setPendingView('all')}
                   className={`h-10 rounded-xl px-3 text-sm font-bold ${pendingView === 'all'
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600'
                     }`}
                 >
                   Tất cả ({pendingFiles.length})
@@ -1487,8 +1502,8 @@ export default function FolderDetailPage() {
                   type="button"
                   onClick={() => setPendingView('untagged')}
                   className={`h-10 rounded-xl px-3 text-sm font-bold ${pendingView === 'untagged'
-                      ? 'bg-rose-600 text-white'
-                      : 'bg-rose-50 text-rose-600'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-rose-50 text-rose-600'
                     }`}
                 >
                   Không gắn nhãn ({untaggedPendingCount})
@@ -1501,8 +1516,8 @@ export default function FolderDetailPage() {
                       setIsUploadTagPickerOpen((value) => !value)
                     }
                     className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold ${selectedPendingIds.length > 0
-                        ? 'bg-blue-600 text-white'
-                        : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                      ? 'bg-blue-600 text-white'
+                      : 'cursor-not-allowed bg-slate-100 text-slate-400'
                       }`}
                     disabled={selectedPendingIds.length === 0}
                   >
@@ -1622,10 +1637,10 @@ export default function FolderDetailPage() {
                         key={item.id}
                         onClick={() => togglePendingSelection(item.id)}
                         className={`group relative cursor-pointer overflow-hidden rounded-2xl border-2 bg-white transition ${selected
-                            ? 'border-blue-500 ring-2 ring-blue-100'
-                            : item.tagIds.length === 0
-                              ? 'border-slate-200 shadow-sm'
-                              : 'border-transparent shadow-sm hover:border-slate-300'
+                          ? 'border-blue-500 ring-2 ring-blue-100'
+                          : item.tagIds.length === 0
+                            ? 'border-slate-200 shadow-sm'
+                            : 'border-transparent shadow-sm hover:border-slate-300'
                           }`}
                       >
                         <div className="relative aspect-square bg-slate-100">
@@ -1644,8 +1659,8 @@ export default function FolderDetailPage() {
 
                           <span
                             className={`absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border text-white ${selected
-                                ? 'border-blue-600 bg-blue-600'
-                                : 'border-white/70 bg-slate-950/40'
+                              ? 'border-blue-600 bg-blue-600'
+                              : 'border-white/70 bg-slate-950/40'
                               }`}
                           >
                             {selected && <Check className="h-3.5 w-3.5" />}
