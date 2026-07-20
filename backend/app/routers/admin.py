@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -163,6 +163,77 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             .filter(models.ImageRecord.status == "in_progress")
             .count()
         )
+
+        # Lấy chi tiết những lô đang có vật liệu chờ cắt.
+        # Mỗi lô trả về số lượng ảnh chờ cắt và tối đa 4 ảnh xem trước.
+        waiting_images = (
+            db.query(models.ImageRecord)
+            .filter(models.ImageRecord.status == "in_progress")
+            .order_by(
+                models.ImageRecord.original_time.desc(),
+                models.ImageRecord.id.desc(),
+            )
+            .all()
+        )
+
+        waiting_folder_ids = {
+            image.folder_id
+            for image in waiting_images
+            if image.folder_id is not None
+        }
+
+        waiting_folder_map = {}
+        if waiting_folder_ids:
+            waiting_folders_query = (
+                db.query(models.Folder)
+                .filter(models.Folder.id.in_(waiting_folder_ids))
+                .all()
+            )
+            waiting_folder_map = {
+                folder.id: folder
+                for folder in waiting_folders_query
+            }
+
+        waiting_folder_groups = {}
+
+        for image in waiting_images:
+            folder = waiting_folder_map.get(image.folder_id)
+            if not folder:
+                continue
+
+            group = waiting_folder_groups.setdefault(
+                folder.id,
+                {
+                    "id": folder.id,
+                    "name": folder.name,
+                    "uploader_email": folder.uploader_email,
+                    "cover_image": folder.cover_image,
+                    "total_images": folder.image_count or 0,
+                    "waiting_count": 0,
+                    "preview_images": [],
+                },
+            )
+
+            group["waiting_count"] += 1
+
+            if len(group["preview_images"]) < 4:
+                group["preview_images"].append({
+                    "id": image.id,
+                    "file_path": image.file_path,
+                    "original_time": (
+                        image.original_time.isoformat()
+                        if image.original_time
+                        else None
+                    ),
+                })
+
+        waiting_folders = sorted(
+            waiting_folder_groups.values(),
+            key=lambda item: (
+                -item["waiting_count"],
+                item["name"].lower(),
+            ),
+        )
         completed_items = (
             db.query(models.ImageRecord)
             .filter(models.ImageRecord.status == "completed")
@@ -295,11 +366,13 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
                 "total_images": total_images,
                 "in_stock_items": in_stock_items,
                 "processing_items": processing_items,
+                "waiting_folder_count": len(waiting_folders),
                 "completed_items": completed_items,
                 "warning_items": warning_items,
                 "completion_rate": completion_rate,
             },
             "daily_flow": list(daily_flow.values()),
+            "waiting_folders": waiting_folders,
             "activities": activities[:8],
             "last_updated": datetime.now().isoformat(),
         }
@@ -560,3 +633,31 @@ def open_local_file(request: dict):
             status_code=500,
             detail=f"Không thể mở file: {str(exc)}",
         ) from exc
+
+@router.post("/folders/{folder_id}/cover")
+def upload_folder_cover(
+    folder_id: int, 
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
+    # 1. Tìm lô hàng (dùng luôn hàm kiểm tra lỗi 404 có sẵn của bạn)
+    folder = _get_folder_or_404(db, folder_id)
+
+    # 2. Tạo thư mục 'covers' nằm bên trong thư mục UPLOAD_DIR hiện tại
+    cover_dir = UPLOAD_DIR / "covers"
+    cover_dir.mkdir(exist_ok=True)
+
+    # 3. Đặt tên file và lưu vào ổ cứng
+    file_extension = file.filename.split(".")[-1] if file.filename else "jpg"
+    new_filename = f"folder_{folder_id}_cover.{file_extension}"
+    file_path = cover_dir / new_filename
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 4. Lưu đường dẫn vào Database
+    cover_url = f"/uploads/covers/{new_filename}"
+    folder.cover_image = cover_url
+    db.commit()
+    
+    return {"message": "Cập nhật ảnh bìa thành công", "cover_image": cover_url}

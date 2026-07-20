@@ -246,7 +246,8 @@ def get_folders(db: Session = Depends(get_db)):
             "image_count": folder.image_count,
             "size_mb": folder.size_mb,
             "status": getattr(folder, "status", None),
-            "in_progress_count": in_progress_count 
+            "in_progress_count": in_progress_count,
+            "cover_image": folder.cover_image
         })
         
     return result

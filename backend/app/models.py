@@ -40,6 +40,7 @@ class Folder(Base):
     image_count = Column(Integer, default=0)
     size_mb = Column(Integer, default=0)
     status = Column(String, default='pending')
+    cover_image = Column(String, nullable=True)
 
 class Tag(Base):
     __tablename__ = "tags"

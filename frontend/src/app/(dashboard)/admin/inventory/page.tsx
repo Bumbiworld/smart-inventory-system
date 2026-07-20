@@ -30,7 +30,8 @@ interface Folder {
   image_count: number;
   size_mb: number;
   status: string;
-  in_progress_count?: number; // Đón dữ liệu từ backend
+  in_progress_count?: number;
+  cover_image?: string;
 }
 
 interface FolderView {
@@ -41,6 +42,7 @@ interface FolderView {
   imageCount: number;
   size: string;
   inProgressCount: number;
+  coverImage?: string;
 }
 
 interface FolderGroup {
@@ -59,12 +61,19 @@ export default function ImageFoldersPage() {
   const [newFolderName, setNewFolderName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // States lưu trữ ảnh bìa
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string>('');
+
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<{
     id: number;
     name: string;
+    coverImage?: string;
   } | null>(null);
   const [editFolderName, setEditFolderName] = useState('');
+  const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
+  const [editCoverPreview, setEditCoverPreview] = useState('');
 
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, id: number | null, name: string }>({ isOpen: false, id: null, name: '' });
   const [deletePassword, setDeletePassword] = useState('');
@@ -126,7 +135,8 @@ export default function ImageFoldersPage() {
           time: timeStr,
           imageCount: folder.image_count,
           size: `${folder.size_mb} MB`,
-          inProgressCount: folder.in_progress_count || 0, // Nhận số lượng chờ cắt
+          inProgressCount: folder.in_progress_count || 0,
+          coverImage: folder.cover_image,
         });
       });
 
@@ -146,6 +156,27 @@ export default function ImageFoldersPage() {
     void fetchFolders();
   }, [fetchFolders]);
 
+  const handleCloseCreateModal = () => {
+    setIsModalOpen(false);
+    setNewFolderName('');
+    setCoverFile(null);
+    setCoverPreview('');
+    setErrorMessage('');
+  };
+
+  const handleCloseEditModal = () => {
+    if (editCoverPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editCoverPreview);
+    }
+
+    setIsEditModalOpen(false);
+    setEditingFolder(null);
+    setEditFolderName('');
+    setEditCoverFile(null);
+    setEditCoverPreview('');
+    setErrorMessage('');
+  };
+
   const handleCreateFolder = async (
     event: React.FormEvent<HTMLFormElement>,
   ) => {
@@ -158,6 +189,7 @@ export default function ImageFoldersPage() {
     setErrorMessage('');
 
     try {
+      // 1. Tạo thư mục mới
       const response = await fetch(
         `${API_BASE_URL}/api/inventory/folders`,
         {
@@ -172,8 +204,37 @@ export default function ImageFoldersPage() {
 
       if (!response.ok) throw new Error(await readApiError(response));
 
-      setNewFolderName('');
-      setIsModalOpen(false);
+      const newFolder = await response.json();
+
+      // 2. GỌI API UPLOAD KÈM THÔNG BÁO LỖI
+      if (coverFile) {
+        if (!newFolder.id && !newFolder.data?.id) {
+          alert("Lỗi: Backend không trả về ID của thư mục! Data nhận được: " + JSON.stringify(newFolder));
+        } else {
+          const folderId = newFolder.id || newFolder.data?.id;
+
+          const formData = new FormData();
+          formData.append("file", coverFile);
+
+          const uploadResponse = await fetch(
+            `${API_BASE_URL}/api/admin/folders/${folderId}/cover`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${getToken()}`,
+              },
+              body: formData,
+            }
+          );
+
+          if (!uploadResponse.ok) {
+            const errDetails = await uploadResponse.text();
+            alert(`Lỗi upload ảnh (Mã lỗi: ${uploadResponse.status}): ${errDetails}`);
+          }
+        }
+      }
+
+      handleCloseCreateModal();
       await fetchFolders();
     } catch (error) {
       setErrorMessage(
@@ -198,6 +259,7 @@ export default function ImageFoldersPage() {
     setErrorMessage('');
 
     try {
+      // 1. Cập nhật tên lô.
       const response = await fetch(
         `${API_BASE_URL}/api/admin/folders/${editingFolder.id}`,
         {
@@ -210,17 +272,39 @@ export default function ImageFoldersPage() {
         },
       );
 
-      if (!response.ok) throw new Error(await readApiError(response));
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
 
-      setIsEditModalOpen(false);
-      setEditingFolder(null);
-      setEditFolderName('');
+      // 2. Nếu admin chọn ảnh mới thì thêm/thay ảnh bìa.
+      // Folder cũ chưa có cover_image vẫn dùng được endpoint này.
+      if (editCoverFile) {
+        const formData = new FormData();
+        formData.append('file', editCoverFile);
+
+        const coverResponse = await fetch(
+          `${API_BASE_URL}/api/admin/folders/${editingFolder.id}/cover`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${getToken()}`,
+            },
+            body: formData,
+          },
+        );
+
+        if (!coverResponse.ok) {
+          throw new Error(await readApiError(coverResponse));
+        }
+      }
+
+      handleCloseEditModal();
       await fetchFolders();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : 'Không thể đổi tên lô hàng.',
+          : 'Không thể cập nhật lô hàng.',
       );
     } finally {
       setIsSubmitting(false);
@@ -232,8 +316,28 @@ export default function ImageFoldersPage() {
     folder: FolderView,
   ) => {
     event.stopPropagation();
-    setEditingFolder({ id: folder.id, name: folder.name });
+
+    if (editCoverPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(editCoverPreview);
+    }
+
+    const currentCoverUrl = folder.coverImage
+      ? (
+        folder.coverImage.startsWith('http')
+          ? folder.coverImage
+          : `${API_BASE_URL}${folder.coverImage}`
+      )
+      : '';
+
+    setEditingFolder({
+      id: folder.id,
+      name: folder.name,
+      coverImage: folder.coverImage,
+    });
     setEditFolderName(folder.name);
+    setEditCoverFile(null);
+    setEditCoverPreview(currentCoverUrl);
+    setErrorMessage('');
     setIsEditModalOpen(true);
   };
 
@@ -345,7 +449,6 @@ export default function ImageFoldersPage() {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
 
-              {/* LƯỚI 3 CỘT ĐƯỢC CHIA TẠI ĐÂY */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 sm:ml-4 sm:border-l-2 sm:border-dashed sm:border-slate-200 sm:pl-6">
                 {group.folders.map((folder) => (
                   <article
@@ -364,8 +467,18 @@ export default function ImageFoldersPage() {
                     className="group flex flex-col justify-between relative cursor-pointer rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-100"
                   >
                     <div className="flex items-start gap-4 mb-4">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-inner transition group-hover:bg-blue-600 group-hover:text-white">
-                        <FolderOpen className="h-7 w-7" />
+
+                      {/* KHU VỰC ẢNH BÌA */}
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-inner overflow-hidden transition group-hover:bg-blue-600 group-hover:text-white">
+                        {folder.coverImage ? (
+                          <img
+                            src={folder.coverImage.startsWith('http') ? folder.coverImage : `${API_BASE_URL}${folder.coverImage}`}
+                            alt={folder.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <FolderOpen className="h-7 w-7" />
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -401,7 +514,6 @@ export default function ImageFoldersPage() {
                           </p>
                         </div>
 
-                        {/* HUY HIỆU ĐANG CHỜ CẮT */}
                         {folder.inProgressCount > 0 && (
                           <div
                             className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 shadow-sm"
@@ -419,7 +531,7 @@ export default function ImageFoldersPage() {
                           onClick={(event) => openEditModal(event, folder)}
                           className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                         >
-                          <Edit className="h-4 w-4" /> Đổi tên
+                          <Edit className="h-4 w-4" /> Chỉnh sửa
                         </button>
 
                         <button
@@ -450,7 +562,7 @@ export default function ImageFoldersPage() {
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 sm:max-w-md sm:rounded-3xl sm:p-8 sm:zoom-in-95">
             <div className="mb-6 flex items-center justify-between gap-4">
               <h2 className="text-xl font-bold text-slate-800">Tạo thư mục lô hàng mới</h2>
-              <button onClick={() => setIsModalOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+              <button onClick={handleCloseCreateModal} className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -459,8 +571,39 @@ export default function ImageFoldersPage() {
                 <span className="mb-2 block text-sm font-semibold text-slate-700">Tên lô hàng / Thư mục <span className="text-rose-500">*</span></span>
                 <input type="text" required autoFocus placeholder="VD: Nhập tên vật liệu..." className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} disabled={isSubmitting} />
               </label>
+
+              {/* UPLOAD ẢNH BÌA */}
+              <div className="mt-4">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Ảnh bìa thư mục (Tùy chọn)</span>
+                <div className="flex items-center gap-4">
+                  {coverPreview ? (
+                    <div className="relative h-16 w-16 shrink-0 rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                      <img src={coverPreview} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 border border-slate-200 border-dashed">
+                      <ImageIcon className="h-6 w-6" />
+                    </div>
+                  )}
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={isSubmitting}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setCoverFile(file);
+                        setCoverPreview(URL.createObjectURL(file));
+                      }
+                    }}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-xl file:border-0 file:bg-blue-50 file:py-2.5 file:px-4 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                  />
+                </div>
+              </div>
+
               <div className="mt-6 grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100">Hủy bỏ</button>
+                <button type="button" onClick={handleCloseCreateModal} disabled={isSubmitting} className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100">Hủy bỏ</button>
                 <button type="submit" disabled={isSubmitting || !newFolderName.trim()} className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Xác nhận tạo
                 </button>
@@ -470,25 +613,147 @@ export default function ImageFoldersPage() {
         </div>
       )}
 
-      {/* MODAL ĐỔI TÊN */}
+      {/* MODAL CHỈNH SỬA TÊN VÀ ẢNH BÌA */}
       {isEditModalOpen && editingFolder && (
         <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/60 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4">
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 sm:max-w-md sm:rounded-3xl sm:p-8 sm:zoom-in-95">
             <div className="mb-6 flex items-center justify-between gap-4">
-              <h2 className="text-xl font-bold text-slate-800">Đổi tên thư mục</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">
+                  Chỉnh sửa lô hàng
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Có thể đổi tên hoặc thêm/thay ảnh bìa.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseEditModal}
+                disabled={isSubmitting}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 disabled:opacity-50"
+                aria-label="Đóng"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
+
             <form onSubmit={handleUpdateFolder}>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">Tên mới</span>
-                <input type="text" required autoFocus className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={editFolderName} onChange={(e) => setEditFolderName(e.target.value)} disabled={isSubmitting} />
+                <span className="mb-2 block text-sm font-semibold text-slate-700">
+                  Tên lô hàng
+                </span>
+
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  className="h-12 w-full rounded-2xl border border-slate-300 px-4 text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                  value={editFolderName}
+                  onChange={(event) => setEditFolderName(event.target.value)}
+                  disabled={isSubmitting}
+                />
               </label>
+
+              <div className="mt-5">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">
+                  Ảnh bìa
+                </span>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm">
+                      {editCoverPreview ? (
+                        <img
+                          src={editCoverPreview}
+                          alt={`Ảnh bìa ${editingFolder.name}`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="h-7 w-7" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100">
+                        {editCoverPreview ? 'Chọn ảnh bìa khác' : 'Thêm ảnh bìa'}
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={isSubmitting}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+
+                            if (!file) {
+                              return;
+                            }
+
+                            if (editCoverPreview.startsWith('blob:')) {
+                              URL.revokeObjectURL(editCoverPreview);
+                            }
+
+                            setEditCoverFile(file);
+                            setEditCoverPreview(URL.createObjectURL(file));
+                            event.target.value = '';
+                          }}
+                        />
+                      </label>
+
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        Folder cũ chưa có ảnh bìa vẫn có thể thêm tại đây.
+                      </p>
+
+                      {editCoverFile && (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            if (editCoverPreview.startsWith('blob:')) {
+                              URL.revokeObjectURL(editCoverPreview);
+                            }
+
+                            const originalCover = editingFolder.coverImage
+                              ? (
+                                editingFolder.coverImage.startsWith('http')
+                                  ? editingFolder.coverImage
+                                  : `${API_BASE_URL}${editingFolder.coverImage}`
+                              )
+                              : '';
+
+                            setEditCoverFile(null);
+                            setEditCoverPreview(originalCover);
+                          }}
+                          className="mt-1 text-xs font-bold text-rose-600 hover:underline disabled:opacity-50"
+                        >
+                          Bỏ ảnh vừa chọn
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-6 grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} disabled={isSubmitting} className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100">Hủy bỏ</button>
-                <button type="submit" disabled={isSubmitting || !editFolderName.trim()} className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Lưu thay đổi
+                <button
+                  type="button"
+                  onClick={handleCloseEditModal}
+                  disabled={isSubmitting}
+                  className="min-h-12 rounded-2xl font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Hủy bỏ
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !editFolderName.trim()}
+                  className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-4 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {isSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Lưu thay đổi
                 </button>
               </div>
             </form>

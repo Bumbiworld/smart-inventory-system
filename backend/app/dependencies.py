@@ -18,7 +18,7 @@ if not SECRET_KEY:
 # ==============================================================
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 10080
+ACCESS_TOKEN_EXPIRE_MINUTES = 876000000
 security = HTTPBearer() 
 
 def create_access_token(data: dict):

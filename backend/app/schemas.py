@@ -25,6 +25,7 @@ class FolderResponse(BaseModel):
     image_count: int 
     size_mb: int 
     status: str 
+    cover_image: Optional[str] = None
 
     class Config:
         from_attributes = True 

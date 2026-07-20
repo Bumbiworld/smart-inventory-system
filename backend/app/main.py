@@ -36,11 +36,13 @@ app.mount(
     name="uploads",
 )
 
-# --- ĐÃ SỬA CHỖ NÀY ---
-# Mở khóa CORS cho phép mọi thiết bị trong mạng LAN (xưởng) truy cập
+os.makedirs("uploads/covers", exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Dùng "*" cho mạng LAN nội bộ, hoặc bạn có thể điền IP cụ thể
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

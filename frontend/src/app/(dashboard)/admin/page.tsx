@@ -26,6 +26,7 @@ import {
   Loader2,
   PackageOpen,
   RefreshCw,
+  Scissors,
   UploadCloud,
   UserPlus,
   Users,
@@ -37,6 +38,7 @@ interface DashboardStats {
   total_images: number;
   in_stock_items: number;
   processing_items: number;
+  waiting_folder_count: number;
   completed_items: number;
   warning_items: number;
   completion_rate: number;
@@ -60,9 +62,26 @@ interface ActivityItem {
   created_at: string;
 }
 
+interface WaitingPreviewImage {
+  id: number;
+  file_path: string;
+  original_time?: string | null;
+}
+
+interface WaitingFolder {
+  id: number;
+  name: string;
+  uploader_email: string;
+  cover_image?: string | null;
+  total_images: number;
+  waiting_count: number;
+  preview_images: WaitingPreviewImage[];
+}
+
 interface DashboardData {
   stats: DashboardStats;
   daily_flow: DailyFlowItem[];
+  waiting_folders: WaitingFolder[];
   activities: ActivityItem[];
   last_updated: string;
 }
@@ -74,11 +93,13 @@ const EMPTY_DASHBOARD: DashboardData = {
     total_images: 0,
     in_stock_items: 0,
     processing_items: 0,
+    waiting_folder_count: 0,
     completed_items: 0,
     warning_items: 0,
     completion_rate: 0,
   },
   daily_flow: [],
+  waiting_folders: [],
   activities: [],
   last_updated: '',
 };
@@ -127,6 +148,25 @@ function formatRelativeTime(value: string): string {
 }
 
 // 🛠 ĐÃ NÂNG CẤP: Thêm props onClick và hiệu ứng tương tác (hover, active)
+function resolveMediaUrl(value?: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  if (
+    value.startsWith('http://') ||
+    value.startsWith('https://')
+  ) {
+    return value;
+  }
+
+  const normalizedPath = value.startsWith('/')
+    ? value
+    : `/${value}`;
+
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
 function StatCard({
   title,
   value,
@@ -152,8 +192,8 @@ function StatCard({
         }
       }}
       className={`flex min-h-36 flex-col justify-between rounded-3xl border border-slate-100 bg-white p-5 shadow-sm transition-all duration-200 ${onClick
-          ? 'cursor-pointer hover:-translate-y-1 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-50 active:scale-[0.98]'
-          : ''
+        ? 'cursor-pointer hover:-translate-y-1 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-50 active:scale-[0.98]'
+        : ''
         }`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -410,8 +450,15 @@ export default function DashboardPage() {
         <StatCard
           title="Đang chờ cắt"
           value={dashboard.stats.processing_items}
-          description="Ảnh đang nằm trong working_zone"
-          onClick={() => router.push('/admin/inventory')}
+          description={`${dashboard.stats.waiting_folder_count} lô cần xử lý`}
+          onClick={() =>
+            document
+              .getElementById('waiting-folders')
+              ?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              })
+          }
           icon={
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 transition-colors group-hover:bg-amber-100">
               <Hammer className="h-5 w-5" />
@@ -431,6 +478,169 @@ export default function DashboardPage() {
           }
         />
       </div>
+
+      <section
+        id="waiting-folders"
+        className="scroll-mt-6 rounded-3xl border border-amber-100 bg-white p-4 shadow-sm sm:p-6"
+      >
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <Scissors className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">
+                  Lô đang có vật liệu chờ cắt
+                </h2>
+                <p className="mt-0.5 text-sm text-slate-400">
+                  {dashboard.stats.processing_items} tấm thuộc{' '}
+                  {dashboard.stats.waiting_folder_count} lô.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => router.push('/admin/inventory')}
+            className="flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-50 px-4 text-sm font-bold text-amber-700 transition hover:bg-amber-100"
+          >
+            Xem toàn bộ kho
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        {dashboard.waiting_folders.length === 0 ? (
+          <div className="mt-5 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-10 text-center">
+            <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+            <p className="mt-3 font-bold text-slate-700">
+              Không có vật liệu đang chờ cắt
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              Các lô cần xử lý sẽ tự xuất hiện tại đây.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {dashboard.waiting_folders.map((folder) => {
+              const coverUrl = resolveMediaUrl(folder.cover_image);
+
+              return (
+                <article
+                  key={folder.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() =>
+                    router.push(`/admin/inventory/${folder.id}`)
+                  }
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter' ||
+                      event.key === ' '
+                    ) {
+                      event.preventDefault();
+                      router.push(`/admin/inventory/${folder.id}`);
+                    }
+                  }}
+                  className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-amber-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-amber-50 text-amber-600">
+                      {coverUrl ? (
+                        <img
+                          src={coverUrl}
+                          alt={folder.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <FolderOpen className="h-6 w-6" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3
+                          className="truncate font-bold text-slate-800 group-hover:text-amber-700"
+                          title={folder.name}
+                        >
+                          {folder.name}
+                        </h3>
+
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+                          {folder.waiting_count} tấm
+                        </span>
+                      </div>
+
+                      <p
+                        className="mt-1 truncate text-xs font-medium text-slate-400"
+                        title={folder.uploader_email}
+                      >
+                        {folder.uploader_email}
+                      </p>
+
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Tổng cộng {folder.total_images} ảnh trong lô
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-4 gap-1.5">
+                    {folder.preview_images.map((image) => {
+                      const imageUrl = resolveMediaUrl(image.file_path);
+                      const isRaw = image.file_path
+                        .toLowerCase()
+                        .endsWith('.dng');
+
+                      return (
+                        <div
+                          key={image.id}
+                          className="relative aspect-square overflow-hidden rounded-lg bg-slate-100"
+                        >
+                          {isRaw ? (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] font-bold text-slate-400">
+                              DNG
+                            </div>
+                          ) : (
+                            <img
+                              src={imageUrl}
+                              alt={`Vật liệu chờ cắt #${image.id}`}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {Array.from({
+                      length: Math.max(
+                        0,
+                        4 - folder.preview_images.length,
+                      ),
+                    }).map((_, index) => (
+                      <div
+                        key={`empty-${index}`}
+                        className="aspect-square rounded-lg bg-slate-50"
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-amber-700">
+                      <Hammer className="h-4 w-4" />
+                      Mở khu chờ cắt
+                    </span>
+
+                    <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-1 group-hover:text-amber-600" />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm xl:col-span-2">
@@ -623,8 +833,8 @@ export default function DashboardPage() {
                 >
                   <div
                     className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors ${isFolder
-                        ? 'bg-violet-50 text-violet-600 group-hover:bg-violet-500 group-hover:text-white'
-                        : 'bg-blue-50 text-blue-600 group-hover:bg-blue-500 group-hover:text-white'
+                      ? 'bg-violet-50 text-violet-600 group-hover:bg-violet-500 group-hover:text-white'
+                      : 'bg-blue-50 text-blue-600 group-hover:bg-blue-500 group-hover:text-white'
                       }`}
                   >
                     {isFolder ? (
