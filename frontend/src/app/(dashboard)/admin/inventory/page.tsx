@@ -11,7 +11,8 @@ import {
   UploadCloud,
   User,
   X,
-  Scissors
+  Scissors,
+  GripVertical
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -39,21 +40,20 @@ interface FolderView {
   name: string;
   uploader: string;
   time: string;
+  dateStr: string; // Thêm ngày tháng vào trong card
   imageCount: number;
   size: string;
   inProgressCount: number;
   coverImage?: string;
 }
 
-interface FolderGroup {
-  date: string;
-  isToday: boolean;
-  folders: FolderView[];
-}
-
 export default function ImageFoldersPage() {
   const router = useRouter();
-  const [groupedFolders, setGroupedFolders] = useState<FolderGroup[]>([]);
+
+  // States quản lý danh sách thư mục (Không chia nhóm ngày nữa)
+  const [allFolders, setAllFolders] = useState<FolderView[]>([]);
+  const [orderedFolders, setOrderedFolders] = useState<FolderView[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -61,7 +61,7 @@ export default function ImageFoldersPage() {
   const [newFolderName, setNewFolderName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // States lưu trữ ảnh bìa
+  // States lưu trữ ảnh bìa tạo mới
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
 
@@ -79,6 +79,9 @@ export default function ImageFoldersPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // State hỗ trợ kéo thả (Drag & Drop)
+  const [draggedFolderId, setDraggedFolderId] = useState<number | null>(null);
 
   const fetchFolders = useCallback(async () => {
     setIsLoading(true);
@@ -100,10 +103,8 @@ export default function ImageFoldersPage() {
       }
 
       const rawData: Folder[] = await response.json();
-      const groups = new Map<string, FolderGroup>();
-      const todayStr = new Date().toLocaleDateString('vi-VN');
 
-      rawData.forEach((folder) => {
+      const formattedFolders: FolderView[] = rawData.map((folder) => {
         const rawCreatedAt = folder.created_at || '';
         const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(rawCreatedAt);
         const dateObj = new Date(
@@ -112,35 +113,24 @@ export default function ImageFoldersPage() {
         const validDate = Number.isNaN(dateObj.getTime())
           ? new Date()
           : dateObj;
-        const dateStr = validDate.toLocaleDateString('vi-VN');
-        const timeStr = validDate.toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        const isToday = dateStr === todayStr;
-        const label = isToday ? `Hôm nay (${dateStr})` : dateStr;
 
-        if (!groups.has(label)) {
-          groups.set(label, {
-            date: label,
-            isToday,
-            folders: [],
-          });
-        }
-
-        groups.get(label)?.folders.push({
+        return {
           id: folder.id,
           name: folder.name,
           uploader: folder.uploader_email,
-          time: timeStr,
+          time: validDate.toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          dateStr: validDate.toLocaleDateString('vi-VN'),
           imageCount: folder.image_count,
           size: `${folder.size_mb} MB`,
           inProgressCount: folder.in_progress_count || 0,
           coverImage: folder.cover_image,
-        });
+        };
       });
 
-      setGroupedFolders(Array.from(groups.values()));
+      setAllFolders(formattedFolders);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -155,6 +145,66 @@ export default function ImageFoldersPage() {
   useEffect(() => {
     void fetchFolders();
   }, [fetchFolders]);
+
+  // Đồng bộ thứ tự kéo thả từ Local Storage
+  useEffect(() => {
+    if (allFolders.length > 0) {
+      const savedOrderStr = localStorage.getItem('inventory_folder_order');
+      if (savedOrderStr) {
+        try {
+          const savedOrder: number[] = JSON.parse(savedOrderStr);
+          const sorted = [...allFolders].sort((a, b) => {
+            const idxA = savedOrder.indexOf(a.id);
+            const idxB = savedOrder.indexOf(b.id);
+            if (idxA === -1) return -1; // Thư mục mới tạo được đẩy lên đầu
+            if (idxB === -1) return 1;
+            return idxA - idxB;
+          });
+          setOrderedFolders(sorted);
+          return;
+        } catch (e) {
+          console.error("Lỗi parse thứ tự folder:", e);
+        }
+      }
+      setOrderedFolders(allFolders);
+    } else {
+      setOrderedFolders([]);
+    }
+  }, [allFolders]);
+
+  // ================= CÁC HÀM XỬ LÝ KÉO THẢ =================
+  const handleDragStart = (e: React.DragEvent<HTMLElement>, id: number) => {
+    setDraggedFolderId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id.toString());
+  };
+
+  const handleDragEnd = () => {
+    setDraggedFolderId(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLElement>, targetId: number) => {
+    e.preventDefault();
+    if (draggedFolderId === null || draggedFolderId === targetId) return;
+
+    const oldIndex = orderedFolders.findIndex(f => f.id === draggedFolderId);
+    const newIndex = orderedFolders.findIndex(f => f.id === targetId);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newFolders = [...orderedFolders];
+    const [removed] = newFolders.splice(oldIndex, 1);
+    newFolders.splice(newIndex, 0, removed);
+
+    setOrderedFolders(newFolders);
+    localStorage.setItem('inventory_folder_order', JSON.stringify(newFolders.map(f => f.id)));
+  };
+  // ========================================================
 
   const handleCloseCreateModal = () => {
     setIsModalOpen(false);
@@ -189,7 +239,6 @@ export default function ImageFoldersPage() {
     setErrorMessage('');
 
     try {
-      // 1. Tạo thư mục mới
       const response = await fetch(
         `${API_BASE_URL}/api/inventory/folders`,
         {
@@ -206,7 +255,6 @@ export default function ImageFoldersPage() {
 
       const newFolder = await response.json();
 
-      // 2. GỌI API UPLOAD KÈM THÔNG BÁO LỖI
       if (coverFile) {
         if (!newFolder.id && !newFolder.data?.id) {
           alert("Lỗi: Backend không trả về ID của thư mục! Data nhận được: " + JSON.stringify(newFolder));
@@ -259,7 +307,6 @@ export default function ImageFoldersPage() {
     setErrorMessage('');
 
     try {
-      // 1. Cập nhật tên lô.
       const response = await fetch(
         `${API_BASE_URL}/api/admin/folders/${editingFolder.id}`,
         {
@@ -276,8 +323,6 @@ export default function ImageFoldersPage() {
         throw new Error(await readApiError(response));
       }
 
-      // 2. Nếu admin chọn ảnh mới thì thêm/thay ảnh bìa.
-      // Folder cũ chưa có cover_image vẫn dùng được endpoint này.
       if (editCoverFile) {
         const formData = new FormData();
         formData.append('file', editCoverFile);
@@ -388,7 +433,7 @@ export default function ImageFoldersPage() {
             Thư viện ảnh lô hàng
           </h1>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Quản lý các thư mục hình ảnh do nhân viên tải lên.
+            Kéo thả để sắp xếp lại vị trí các lô hàng theo ý muốn.
           </p>
         </div>
 
@@ -423,7 +468,7 @@ export default function ImageFoldersPage() {
           <Loader2 className="mb-4 h-8 w-8 animate-spin text-blue-500" />
           <p>Đang tải dữ liệu thư viện...</p>
         </div>
-      ) : groupedFolders.length === 0 ? (
+      ) : orderedFolders.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-5 py-16 text-center">
           <FolderOpen className="mx-auto mb-4 h-14 w-14 text-slate-300" />
           <h2 className="text-lg font-bold text-slate-700">
@@ -434,124 +479,120 @@ export default function ImageFoldersPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-9 sm:space-y-12">
-          {groupedFolders.map((group) => (
-            <section key={group.date}>
-              <div className="mb-4 flex items-center gap-3 sm:mb-6 sm:gap-4">
-                <div
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold sm:px-4 sm:text-sm ${group.isToday
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-slate-200 text-slate-600'
-                    }`}
-                >
-                  {group.date}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {orderedFolders.map((folder) => (
+            <article
+              key={folder.id}
+              draggable // Bật tính năng kéo thả
+              onDragStart={(e) => handleDragStart(e, folder.id)}
+              onDragEnd={handleDragEnd}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, folder.id)}
+              className={`group flex flex-col justify-between relative cursor-grab active:cursor-grabbing rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-100 ${draggedFolderId === folder.id ? 'opacity-40 scale-95 border-dashed border-blue-400' : ''
+                }`}
+            >
+              {/* Nút nắm kéo - Hiển thị khi hover */}
+              <div className="absolute top-4 right-4 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 cursor-grab z-10 hidden sm:block">
+                <GripVertical className="h-5 w-5 pointer-events-none" />
+              </div>
+
+              <div
+                className="flex items-start gap-4 mb-4"
+              >
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-blue-50 text-blue-500 shadow-inner transition group-hover:bg-blue-600 group-hover:text-white pointer-events-none">
+                  {folder.coverImage ? (
+                    <img
+                      src={folder.coverImage.startsWith('http') ? folder.coverImage : `${API_BASE_URL}${folder.coverImage}`}
+                      alt={folder.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <FolderOpen className="h-7 w-7" />
+                  )}
                 </div>
-                <div className="h-px flex-1 bg-slate-200" />
+
+                <div
+                  className="min-w-0 flex-1 cursor-pointer pr-6"
+                  onClick={() => router.push(`/admin/inventory/${folder.id}`)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h2
+                      className="truncate text-base font-bold text-slate-800 transition-colors group-hover:text-blue-600 sm:text-lg"
+                      title={folder.name}
+                    >
+                      {folder.name}
+                    </h2>
+                  </div>
+
+                  <div className="mt-2 flex flex-col gap-1.5 text-xs text-slate-500">
+                    <span
+                      className="flex items-center gap-1.5 truncate"
+                      title={folder.uploader}
+                    >
+                      <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="truncate">{folder.uploader}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      {folder.time} • {folder.dateStr}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 sm:ml-4 sm:border-l-2 sm:border-dashed sm:border-slate-200 sm:pl-6">
-                {group.folders.map((folder) => (
-                  <article
-                    key={folder.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() =>
-                      router.push(`/admin/inventory/${folder.id}`)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        router.push(`/admin/inventory/${folder.id}`);
-                      }
-                    }}
-                    className="group flex flex-col justify-between relative cursor-pointer rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-100"
+              <div className="mt-auto border-t border-slate-100 pt-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
+                      <ImageIcon className="h-4 w-4 text-blue-500" />
+                      {folder.imageCount} ảnh
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                      Dung lượng: {folder.size}
+                    </p>
+                  </div>
+
+                  {folder.inProgressCount > 0 && (
+                    <div
+                      className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 shadow-sm"
+                      title={`${folder.inProgressCount} tấm vật liệu đang chờ được cắt`}
+                    >
+                      <Scissors className="h-4 w-4" />
+                      <span className="text-xs font-bold">
+                        {folder.inProgressCount}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => openEditModal(event, folder)}
+                    className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                   >
-                    <div className="flex items-start gap-4 mb-4">
+                    <Edit className="h-4 w-4" /> Chỉnh sửa
+                  </button>
 
-                      {/* KHU VỰC ẢNH BÌA */}
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-inner overflow-hidden transition group-hover:bg-blue-600 group-hover:text-white">
-                        {folder.coverImage ? (
-                          <img
-                            src={folder.coverImage.startsWith('http') ? folder.coverImage : `${API_BASE_URL}${folder.coverImage}`}
-                            alt={folder.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <FolderOpen className="h-7 w-7" />
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <h2 className="truncate text-base font-bold text-slate-800 sm:text-lg" title={folder.name}>
-                            {folder.name}
-                          </h2>
-                          <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-blue-500" />
-                        </div>
-
-                        <div className="mt-2 flex flex-col gap-1.5 text-xs text-slate-500">
-                          <span className="flex items-center gap-1.5 truncate" title={folder.uploader}>
-                            <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                            <span className="truncate">{folder.uploader}</span>
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                            {folder.time}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-auto border-t border-slate-100 pt-4 flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
-                            <ImageIcon className="h-4 w-4 text-blue-500" />
-                            {folder.imageCount} ảnh
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                            Dung lượng: {folder.size}
-                          </p>
-                        </div>
-
-                        {folder.inProgressCount > 0 && (
-                          <div
-                            className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 shadow-sm"
-                            title={`${folder.inProgressCount} tấm vật liệu đang chờ được cắt`}
-                          >
-                            <Scissors className="h-4 w-4" />
-                            <span className="text-xs font-bold">{folder.inProgressCount}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mt-1">
-                        <button
-                          type="button"
-                          onClick={(event) => openEditModal(event, folder)}
-                          className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                          <Edit className="h-4 w-4" /> Chỉnh sửa
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDeleteModal({ isOpen: true, id: folder.id, name: folder.name });
-                            setDeletePassword('');
-                            setDeleteError('');
-                          }}
-                          className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50"
-                        >
-                          <Trash2 className="h-4 w-4" /> Xóa
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleteModal({
+                        isOpen: true,
+                        id: folder.id,
+                        name: folder.name,
+                      });
+                      setDeletePassword('');
+                      setDeleteError('');
+                    }}
+                    className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50"
+                  >
+                    <Trash2 className="h-4 w-4" /> Xóa
+                  </button>
+                </div>
               </div>
-            </section>
+            </article>
           ))}
         </div>
       )}

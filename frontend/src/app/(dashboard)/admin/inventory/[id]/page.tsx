@@ -99,7 +99,6 @@ export default function FolderDetailPage() {
     };
   }, []);
 
-  // ĐOẠN MÃ MỚI: Lắng nghe phím ESC để đóng Modal xem ảnh
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -1070,7 +1069,7 @@ export default function FolderDetailPage() {
                 </div>
               )}
 
-              {/* KHU VỰC CHỌN ẢNH — TAG ĐƯỢC GÁN THEO TỪNG NHÓM ẢNH TRONG CỬA SỔ PHÂN LOẠI */}
+              {/* KHU VỰC CHỌN ẢNH */}
               <div className="flex flex-col gap-3 sm:flex-row">
                 <div onClick={handleBoxClick} className="group flex h-14 w-full cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm transition-all hover:border-blue-300 hover:shadow sm:w-auto">
                   <CalendarDays className="h-5 w-5 text-slate-400 transition-colors group-hover:text-blue-500" />
@@ -1114,7 +1113,7 @@ export default function FolderDetailPage() {
                 )}
               </div>
 
-              {/* LƯỚI ẢNH THEO NGÀY CÓ HIỆN ĐỈNH/ĐÁY */}
+              {/* LƯỚI ẢNH THEO NGÀY */}
               {filteredAvailableStack.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 border-dashed"><ImageIcon className="w-12 h-12 mx-auto text-slate-300 mb-4" /><p className="text-slate-500 font-medium">
                   {selectedTagIds.length > 0
@@ -1198,7 +1197,7 @@ export default function FolderDetailPage() {
             </div>
           )}
 
-          {/* TAB 2: TOÀN BỘ CHỒNG (GIAO DIỆN SẠCH SẼ + CÓ NHÃN ĐỈNH/ĐÁY) */}
+          {/* TAB 2: TOÀN BỘ CHỒNG (ĐÃ CÓ ĐẦY ĐỦ CÁC NÚT THAO TÁC) */}
           {activeTab === 'stack' && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:gap-4 mt-4">
               {filteredAvailableStack.map((img) => {
@@ -1218,7 +1217,6 @@ export default function FolderDetailPage() {
 
                     <div className="absolute left-2 top-2 z-20 rounded-lg border border-white/10 bg-black/65 px-2 py-0.5 font-mono text-sm font-bold text-white shadow-sm backdrop-blur-md">#{dynamicIndex}</div>
 
-                    {/* KHÔI PHỤC LẠI NHÃN ĐỈNH / ĐÁY TẠI ĐÂY */}
                     {!isOnlyStack && isTopStack && (
                       <div className="absolute top-2 right-2 z-20 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm">ĐỈNH CHỒNG</div>
                     )}
@@ -1239,15 +1237,27 @@ export default function FolderDetailPage() {
                         <img src={getValidImageUrl(img.file_path)} alt={img.filename} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
                       )}
 
-                      {/* CHỈ HIỆN 1 ICON MẮT KHI HOVER */}
-                      <div className="absolute inset-0 hidden items-center justify-center bg-slate-950/40 px-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 lg:flex">
-                        <button onClick={(e) => { e.stopPropagation(); setPreviewModal({ isOpen: true, img }); }} className="p-3 bg-white text-amber-600 rounded-xl hover:bg-amber-500 hover:text-white transition-all transform translate-y-2 group-hover:translate-y-0" title="Xem ảnh lớn"><Eye className="h-6 w-6" /></button>
+                      {/* Các nút thao tác hiển thị khi hover trên Desktop */}
+                      <div className="absolute inset-0 hidden items-center justify-center gap-1.5 bg-slate-950/40 px-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100 lg:flex">
+                        <button onClick={(e) => { e.stopPropagation(); handlePickForWork(img.id); }} className="p-2 bg-white text-emerald-600 rounded-lg hover:bg-emerald-500 hover:text-white transition-all transform translate-y-2 group-hover:translate-y-0" title="Đưa vào chờ cắt"><Scissors className="w-4 h-4" /></button>
+
+                        <button onClick={(e) => { e.stopPropagation(); setPreviewModal({ isOpen: true, img }); }} className="p-2 bg-white text-amber-600 rounded-lg hover:bg-amber-500 hover:text-white transition-all transform translate-y-2 group-hover:translate-y-0" title="Xem ảnh lớn"><Eye className="w-4 h-4" /></button>
+
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteSingleImage(img.id); }} className="p-2 bg-white text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-all transform translate-y-2 group-hover:translate-y-0" title="Xóa"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
 
                     <div className="border-t border-slate-100 p-2">
                       {renderImageTags(img)}
                     </div>
+
+                    {/* Thanh công cụ cho thiết bị Mobile */}
+                    <div className="grid grid-cols-3 gap-1 border-t border-slate-100 p-1.5 lg:hidden">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handlePickForWork(img.id); }} className="flex min-h-9 items-center justify-center rounded-lg text-emerald-600 active:bg-emerald-50"><Scissors className="h-4 w-4" /></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setPreviewModal({ isOpen: true, img }); }} className="flex min-h-9 items-center justify-center rounded-lg text-amber-600 active:bg-amber-50"><Eye className="h-4 w-4" /></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteSingleImage(img.id); }} className="flex min-h-9 items-center justify-center rounded-lg text-rose-600 active:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+
                   </div>
                 );
               })}
